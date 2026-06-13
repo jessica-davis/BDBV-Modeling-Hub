@@ -92,7 +92,7 @@
             ]
         },
         "model_details": {
-            "description": "Structured information about the model",
+            "description": "Structured information about the model.",
             "type": "object",
             "properties": {
                 "data_inputs": {
@@ -105,7 +105,7 @@
                     "maxLength": 200
                 },
                 "methods_long": {
-                    "description": "A full description of the methods used by this model.",
+                    "description": "A full description of the methods used by this model. Include details here especially if the model outputs deviate in any way from the stated targets, e.g., the model is estimating cumulative cases rather than infections.",
                     "type": "string"
                 }
             },

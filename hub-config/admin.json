@@ -1,18 +1,18 @@
 {
     "schema_version": "https://raw.githubusercontent.com/hubverse-org/schemas/main/v6.0.0/admin-schema.json",
-    "name": "Template Forecast Hub",
-    "maintainer": "Consortium of Infectious Disease Modeling Hubs",
+    "name": "BVBD Modeling Hub",
+    "maintainer": "Insight Net",
     "contact": {
-        "name": "Joe Bloggs",
-        "email": "j.bloggs@cidmh.com"
+        "name": "Nick Reich",
+        "email": "nick@umass.edu"
     },
     "repository": {
         "host": "github",
-        "owner": "hubverse-org",
-        "name": "hubTemplate"
+        "owner": "InsightNet-US",
+        "name": "BDBV-Modeling-Hub"
     },
-    "file_format": ["csv", "parquet"],
-    "timezone": "US/Eastern",
+    "file_format": ["csv"],
+    "timezone": "Africa/Kinshasa",
     "cloud": {
         "enabled": false,
         "host": {
