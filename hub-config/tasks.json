@@ -1,27 +1,89 @@
 {
-    "schema_version": "https://raw.githubusercontent.com/hubverse-org/schemas/main/v6.0.0/tasks-schema.json",
-    "rounds": [
+  "schema_version": "https://raw.githubusercontent.com/hubverse-org/schemas/main/v6.0.0/tasks-schema.json",
+  "rounds": [
+    {
+      "round_id_from_variable": true,
+      "round_id": "reference_date",
+      "round_name": "BVBD 2026 cumulative outbreak size estimate",
+      "model_tasks": [
         {
-            "round_id_from_variable": true,
-            "round_id": "task_id_variable_that_defines_a_round",
-            "model_tasks": [
-                {
-                    "task_ids": {
-                        "task_id_variable_that_defines_a_round": {
-                            "required": [],
-                            "optional": []
-                        }
-                    },
-                    "output_type": {},
-                    "target_metadata":[]
-                }
-            ],
-            "submissions_due": {
-                "start": "1900-01-01",
-                "end": "2900-12-31"
+          "task_ids": {
+            "reference_date": {
+              "required": null,
+              "optional": [
+                "2026-05-18",
+                "2026-05-22",
+                "2026-05-23",
+                "2026-06-07"
+              ]
+            },
+            "location": {
+              "required": [
+                "CD"
+              ],
+              "optional": null
+            },
+            "target": {
+              "required": [
+                "cumulative cases"
+              ],
+              "optional": null
             }
+          },
+          "output_type": {
+            "mean": {
+              "output_type_id": {
+                "required": null
+              },
+              "is_required": false,
+              "value": {
+                "type": "double",
+                "minimum": 0
+              }
+            },
+            "median": {
+              "output_type_id": {
+                "required": null
+              },
+              "is_required": false,
+              "value": {
+                "type": "double",
+                "minimum": 0
+              }
+            },
+            "quantile": {
+              "output_type_id": {
+                "required": [
+                  0.025, 0.1, 0.25, 0.5, 0.75, 0.9, 0.975
+                ]
+              },
+              "is_required": false,
+              "value": {
+                "type": "double",
+                "minimum": 0
+              }
+            }
+          },
+          "target_metadata": [
+            {
+              "target_id": "cumulative cases",
+              "target_name": "Current cumulative BVBD cases",
+              "target_units": "cases",
+              "target_keys": {
+                "target": "cumulative cases"
+              },
+              "description": "Estimated cumulative number of Bundibugyo virus disease (BVD) cases that are symptomatic and have occurred as of reference_date. This target measures the total number of symptomatic cases up to and including the reference_date. It is NOT a count of underlying infections, and NOT counting just laboratory-confirmed cases. Different models may have slightly different definitions of the values that they report. Any discrepancies should be reported in model metadata files.",
+              "target_type": "continuous",
+              "is_step_ahead": false
+            }
+          ]
         }
-    ],
-    "output_type_id_datatype": "auto",
-    "derived_task_ids": null
+      ],
+      "submissions_due": {
+        "relative_to": "reference_date",
+        "start": -7,
+        "end": 28
+      }
+    }
+  ]
 }
