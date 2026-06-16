@@ -6,4 +6,4 @@ reference_date,target,location,output_type,output_type_id,value
 2026-05-24,cumulative cases,CD,quantile,0.75,1373.75
 2026-05-24,cumulative cases,CD,quantile,0.9,1986.6
 2026-05-24,cumulative cases,CD,quantile,0.975,2858.03
-2026-05-24,cumulative cases,CD,NA,mean,1039.65
+2026-05-24,cumulative cases,CD,mean,NA,1039.65
