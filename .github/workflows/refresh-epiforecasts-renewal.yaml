@@ -6,15 +6,11 @@
 # Validation runs on that PR via the existing validate-submission workflow.
 #
 # Notable caveats:
-#   * PRs opened with the default GITHUB_TOKEN do NOT trigger other workflows
-#     (so validate-submission would not auto-run). To get validation to run on
-#     the refresh PR, provide a Personal Access Token (or GitHub App token) as a
-#     secret and pass it to the checkout + create-pull-request steps below
-#     (see the `token:` lines). With the default token the PR is still created;
-#     you just have to re-run checks manually or push an empty commit.
+#   * The checkout and create-pull-request steps use the REFRESH_PAT secret so
+#     the refresh PR triggers the validation workflows (PRs opened with the
+#     default GITHUB_TOKEN do not trigger other workflows).
 #   * Metadata (model-metadata/epiforecasts-renewal.yml, incl. model_version) is
 #     NOT auto-updated here - only the model-output CSV and the allowed dates.
-#   * The upstream releases are public, so the default token can read them.
 
 name: Refresh epiforecasts-renewal
 
@@ -42,9 +38,8 @@ jobs:
   refresh:
     runs-on: ubuntu-22.04
     env:
-      # Used by `gh release download` inside the parser to read the public
-      # upstream releases. Swap for a PAT secret if you want the resulting PR
-      # to trigger the validation workflows (see caveat above).
+      # Read-only access for `gh release download` in the parser; the upstream
+      # releases are public, so the default token suffices.
       GH_TOKEN: ${{ github.token }}
     steps:
       - name: Checkout hub
