@@ -35,7 +35,7 @@ permissions:
 
 jobs:
   refresh:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     env:
       # Used by `gh release download` inside the parser to read the public
       # upstream releases. Swap for a PAT secret if you want the resulting PR
