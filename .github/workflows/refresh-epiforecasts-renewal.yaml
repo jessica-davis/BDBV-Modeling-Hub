@@ -58,8 +58,8 @@ jobs:
           set -euo pipefail
           Rscript src/parse_epiforecasts_renewal.R "${{ inputs.release_tag }}" ${{ inputs.force && '--force' || '' }}
 
-      # The parser skips writing when the data cut-off (reference_date) has not
-      # advanced, so "no file change" means there is nothing new to submit.
+      # The parser skips writing when the release build date (reference_date)
+      # has not advanced, so "no file change" means there is nothing new to submit.
       - name: Detect changes
         id: changes
         run: |
