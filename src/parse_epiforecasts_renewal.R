@@ -18,14 +18,22 @@
 # analogue of `C_T`, which is cumulative *infections*). This script uses
 # `cumulative_onsets_T`, so the submission maps cleanly onto the hub target.
 #
-# Idempotency. The reference_date is the upstream data cut-off (`as_of_date`),
-# which only advances when new surveillance data are added - not on every
-# rebuild. Because the quantiles are computed from ~200 thinned draws, re-running
-# on a fresh build with the SAME cut-off would produce slightly different numbers
-# (Monte-Carlo noise) for an already-submitted date. To avoid that churn and
-# avoid clobbering a previously submitted estimate, the script SKIPS writing when
-# a submission file for that reference_date already exists. Pass `--force` (or
-# set BVD_FORCE=1) to overwrite anyway.
+# reference_date. The reference_date is the date the upstream estimate was
+# generated, i.e. the GitHub release's build date (`createdAt`), NOT the data
+# cut-off (`as_of_date`, which lags real time by several days).
+#
+# Idempotency, keyed on the data cut-off. We want exactly ONE submission per
+# distinct data vintage: a new submission iff the upstream `as_of_date` has
+# changed, NOT on every rebuild (each rebuild re-runs MCMC, so the ~200 thinned
+# draws give slightly different quantiles even when the data are unchanged).
+# Since the submission filename is the release build date and so does not encode
+# the as_of_date, the set of already-submitted as_of_dates is tracked in a small
+# committed ledger (src/epiforecasts_renewal_submitted.csv: as_of_date,
+# reference_date, release_tag). The script SKIPS when the current release's
+# as_of_date is already in the ledger. Pass `--force` (or set BVD_FORCE=1) to
+# re-submit anyway. NOTE: the first ledger rows (2026-06-13, 2026-06-14) predate
+# this convention and use as_of_date as their reference_date; later rows use the
+# release build date.
 #
 # Usage:
 #   Rscript src/parse_epiforecasts_renewal.R                # latest release
@@ -62,6 +70,10 @@ MODEL_ID <- paste0(TEAM_ABBR, "-", MODEL_ABBR)
 ## The posterior-draws column carrying the cumulative symptomatic-case posterior.
 DRAWS_COL <- "cumulative_onsets_T"
 
+## Ledger of submitted data vintages, relative to the hub root (set in main).
+LEDGER_REL <- file.path("src", "epiforecasts_renewal_submitted.csv")
+LEDGER_COLS <- c("as_of_date", "reference_date", "release_tag")
+
 ## ---------------------------------------------------------------------------
 ## Helpers
 ## ---------------------------------------------------------------------------
@@ -86,6 +98,20 @@ latest_release_tag <- function() {
   tag <- trimws(paste(tag, collapse = ""))
   if (!nzchar(tag)) stop("could not resolve the latest release tag")
   tag
+}
+
+## The build date (UTC) of a release, from its `createdAt` timestamp. This is
+## the date the upstream estimate was generated and is used as reference_date.
+release_build_date <- function(tag) {
+  ts <- gh(c("release", "view", tag, "-R", UPSTREAM_REPO,
+             "--json", "createdAt", "--jq", ".createdAt"))
+  ts <- trimws(paste(ts, collapse = ""))
+  date_str <- substr(ts, 1, 10)
+  if (!grepl("^[0-9]{4}-[0-9]{2}-[0-9]{2}$", date_str)) {
+    stop(sprintf("could not parse build date from createdAt '%s' for %s",
+                 ts, tag))
+  }
+  date_str
 }
 
 ## Download a single named asset from a release into `dir`, returning its path.
@@ -140,6 +166,39 @@ build_submission <- function(reference_date, draws) {
   rbind(quantile_rows, point_rows)
 }
 
+## Read the submission ledger, returning a data frame (with the expected
+## columns even when the file does not exist yet).
+read_ledger <- function(ledger_path) {
+  if (!file.exists(ledger_path)) {
+    empty <- as.data.frame(
+      matrix(character(0), ncol = length(LEDGER_COLS),
+             dimnames = list(NULL, LEDGER_COLS)),
+      stringsAsFactors = FALSE)
+    return(empty)
+  }
+  led <- utils::read.csv(ledger_path, colClasses = "character",
+                         stringsAsFactors = FALSE)
+  missing <- setdiff(LEDGER_COLS, names(led))
+  if (length(missing) > 0) {
+    stop(sprintf("ledger %s is missing column(s): %s",
+                 ledger_path, paste(missing, collapse = ", ")))
+  }
+  led
+}
+
+## Insert or replace the ledger row for `as_of_date`, then write it back sorted.
+upsert_ledger <- function(ledger_path, led, as_of_date, reference_date,
+                          release_tag) {
+  led <- led[led$as_of_date != as_of_date, , drop = FALSE]
+  led <- rbind(led, data.frame(as_of_date = as_of_date,
+                               reference_date = reference_date,
+                               release_tag = release_tag,
+                               stringsAsFactors = FALSE))
+  led <- led[order(led$as_of_date), LEDGER_COLS, drop = FALSE]
+  dir.create(dirname(ledger_path), showWarnings = FALSE, recursive = TRUE)
+  utils::write.csv(led, ledger_path, row.names = FALSE, quote = FALSE)
+}
+
 ## Resolve the hub root: explicit override, else the parent of this script.
 resolve_hub_root <- function() {
   override <- Sys.getenv("BVD_HUB_PATH", "")
@@ -176,23 +235,44 @@ tmp <- tempfile("bvd_renewal_")
 dir.create(tmp)
 on.exit(unlink(tmp, recursive = TRUE), add = TRUE)
 
-## Resolve the reference_date (data cut-off) first, from the small TOML asset,
-## so we can decide whether to skip before downloading the larger draws file.
+## reference_date = the release build date (from release metadata, no download).
+reference_date <- release_build_date(tag)
+message(sprintf("Reference date: %s (release build date)", reference_date))
+
+## as_of_date = the data cut-off, which keys idempotency. Read from the small
+## observations.toml asset before downloading the larger draws file.
 obs_path <- fetch_asset(tag, "observations.toml", tmp)
-reference_date <- read_as_of_date(obs_path)
-message(sprintf("Reference date: %s", reference_date))
+as_of_date <- read_as_of_date(obs_path)
+message(sprintf("Data cut-off  : %s (as_of_date)", as_of_date))
+
+ledger_path <- file.path(hub_root, LEDGER_REL)
+ledger <- read_ledger(ledger_path)
+
+## Idempotency gate: this data vintage (as_of_date) has already been submitted,
+## so skip to avoid Monte-Carlo churn. `--force` re-submits anyway.
+if (as_of_date %in% ledger$as_of_date && !force) {
+  prior <- ledger[ledger$as_of_date == as_of_date, ][1, ]
+  message(sprintf(paste0("No new data cut-off: as_of_date %s already submitted ",
+                         "(reference_date %s, %s). Skipping (pass --force to ",
+                         "re-submit)."),
+                  as_of_date, prior$reference_date, prior$release_tag))
+  quit(save = "no", status = 0)
+}
 
 out_dir <- file.path(hub_root, "model-output", MODEL_ID)
 out_file <- file.path(out_dir, sprintf("%s-%s.csv", reference_date, MODEL_ID))
 
-## Idempotency gate: a submission for this reference_date already exists, so the
-## data cut-off has not advanced. Skip to avoid Monte-Carlo churn and to avoid
-## overwriting an already-submitted estimate. `--force` overrides.
-if (file.exists(out_file) && !force) {
-  message(sprintf(
-    "No new data cut-off: %s already exists. Skipping (pass --force to overwrite).",
-    out_file))
-  quit(save = "no", status = 0)
+## Collision guard: the build-date filename is already used by a DIFFERENT data
+## vintage. Two distinct as_of_dates released on the same build date would map to
+## the same filename; refuse to silently overwrite.
+collision <- ledger[ledger$reference_date == reference_date &
+                      ledger$as_of_date != as_of_date, , drop = FALSE]
+if (nrow(collision) > 0) {
+  stop(sprintf(paste0("reference_date %s (build date) is already used by a ",
+                      "different data vintage (as_of_date %s, %s). Resolve ",
+                      "manually before submitting as_of_date %s."),
+               reference_date, collision$as_of_date[1],
+               collision$release_tag[1], as_of_date))
 }
 
 draws_path <- fetch_asset(tag, "posterior_draws.csv", tmp)
@@ -210,7 +290,9 @@ submission <- build_submission(reference_date, draws)
 
 dir.create(out_dir, showWarnings = FALSE, recursive = TRUE)
 utils::write.csv(submission, out_file, row.names = FALSE, quote = FALSE)
+upsert_ledger(ledger_path, ledger, as_of_date, reference_date, tag)
 
-message(sprintf("Wrote %s%s", out_file, if (force) " (forced overwrite)" else ""))
-message(sprintf("  draws: %d | median: %s | quantity: cumulative symptomatic cases (%s)",
-                length(draws), round(median(draws)), DRAWS_COL))
+message(sprintf("Wrote %s%s", out_file, if (force) " (forced)" else ""))
+message(sprintf("  as_of %s | draws: %d | median: %s | quantity: cumulative symptomatic cases (%s)",
+                as_of_date, length(draws), round(median(draws)), DRAWS_COL))
+message(sprintf("Updated ledger %s", ledger_path))
